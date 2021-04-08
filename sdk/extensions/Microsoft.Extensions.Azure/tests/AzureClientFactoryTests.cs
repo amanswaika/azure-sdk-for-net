@@ -310,138 +310,6 @@ namespace Azure.Core.Extensions.Tests
         }
 
         [Test]
-        public void CanCreateClientWithoutRegistration()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient:uri", "http://localhost/"),
-                new KeyValuePair<string, string>("TestClient:clientId", "ConfigurationClientId"),
-                new KeyValuePair<string, string>("TestClient:clientSecret", "ConfigurationClientSecret"),
-                new KeyValuePair<string, string>("TestClient:tenantId", "ConfigurationTenantId"));
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => builder.UseConfiguration(_ => configuration));
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClientWithCredentials> factory = provider.GetService<IAzureClientFactory<TestClientWithCredentials>>();
-            TestClientWithCredentials client = factory.CreateClient("TestClient");
-
-            Assert.IsInstanceOf<ClientSecretCredential>(client.Credential);
-            var clientSecretCredential = (ClientSecretCredential)client.Credential;
-
-            Assert.AreEqual("http://localhost/", client.Uri.ToString());
-            Assert.AreEqual("ConfigurationClientId", clientSecretCredential.ClientId);
-            Assert.AreEqual("ConfigurationClientSecret", clientSecretCredential.ClientSecret);
-            Assert.AreEqual("ConfigurationTenantId", clientSecretCredential.TenantId);
-        }
-
-        [Test]
-        public void RegistrationOverridesConfigurationBasedClient()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient:connectionString", "http://localhost/"),
-                new KeyValuePair<string, string>("AnotherTestClient:connectionString", "http://betterhost/"));
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => {
-                builder.AddTestClient(configuration.GetSection("AnotherTestClient")).WithName("TestClient");
-                builder.UseConfiguration(_ => configuration);
-            });
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClient> factory = provider.GetService<IAzureClientFactory<TestClient>>();
-            TestClient client = factory.CreateClient("TestClient");
-
-            Assert.AreEqual("http://betterhost/", client.ConnectionString);
-        }
-
-        [Test]
-        public void RegistrationFallsBackToConfigurationBasedClient()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient:connectionString", "http://localhost/"),
-                new KeyValuePair<string, string>("AnotherTestClient:connectionString", "http://betterhost/"));
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => {
-                builder.AddTestClient(configuration.GetSection("AnotherTestClient"));
-                builder.UseConfiguration(_ => configuration);
-            });
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClient> factory = provider.GetService<IAzureClientFactory<TestClient>>();
-            TestClient client = factory.CreateClient("TestClient");
-            TestClient defaultTestClient = provider.GetService<TestClient>();
-
-            Assert.AreEqual("http://localhost/", client.ConnectionString);
-            Assert.AreEqual("http://betterhost/", defaultTestClient.ConnectionString);
-        }
-
-        [Test]
-        public void CanSetClientOptionsInConfigurationBasedClientsViaConfigureOptions()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient:connectionString", "http://localhost/"),
-                new KeyValuePair<string, string>("TestClient2:connectionString", "http://localhost2/")
-                );
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => {
-                builder.UseConfiguration(_ => configuration);
-            });
-
-            serviceCollection.ConfigureAll<TestClientOptions>(options => options.Property = "client option value");
-            serviceCollection.Configure<TestClientOptions>("TestClient", options => options.IntProperty = 2);
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClient> factory = provider.GetService<IAzureClientFactory<TestClient>>();
-            TestClient client = factory.CreateClient("TestClient");
-            TestClient client2 = factory.CreateClient("TestClient2");
-
-            Assert.AreEqual("http://localhost/", client.ConnectionString);
-            Assert.AreEqual("client option value", client.Options.Property);
-            Assert.AreEqual(2, client.Options.IntProperty);
-
-            Assert.AreEqual("http://localhost2/", client2.ConnectionString);
-            Assert.AreEqual("client option value", client2.Options.Property);
-        }
-
-        [Test]
-        public void CanSetClientOptionsInConfigurationBasedClients()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient:connectionString", "http://localhost/"),
-                new KeyValuePair<string, string>("TestClient:Property", "client option value"));
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => {
-                builder.UseConfiguration(_ => configuration);
-            });
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClient> factory = provider.GetService<IAzureClientFactory<TestClient>>();
-            TestClient client = factory.CreateClient("TestClient");
-
-            Assert.AreEqual("http://localhost/", client.ConnectionString);
-            Assert.AreEqual("client option value", client.Options.Property);
-        }
-
-        [Test]
-        public void CanCreateClientWithoutRegistrationUsingConnectionString()
-        {
-            var configuration = GetConfiguration(
-                new KeyValuePair<string, string>("TestClient", "http://localhost/"));
-
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddAzureClients(builder => builder.UseConfiguration(_ => configuration));
-
-            ServiceProvider provider = serviceCollection.BuildServiceProvider();
-            IAzureClientFactory<TestClient> factory = provider.GetService<IAzureClientFactory<TestClient>>();
-            TestClient client = factory.CreateClient("TestClient");
-
-            Assert.AreEqual("http://localhost/", client.ConnectionString);
-        }
-
-        [Test]
         public void SupportsSettingVersion()
         {
             var serviceCollection = new ServiceCollection();
@@ -487,6 +355,66 @@ namespace Azure.Core.Extensions.Tests
             Assert.NotNull(client.Options);
             Assert.AreEqual(TestClientOptionsMultipleParameters.ServiceVersion.B, client.Options.Version);
             Assert.AreEqual("some default value", client.Options.OtherParameter);
+        }
+
+        [Test]
+        public void CanRegisterCustomClient()
+        {
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddAzureClients(builder =>
+                builder.AddClient<TestClient, TestClientOptions>(options => new TestClient("conn str", options))
+            );
+            ServiceProvider provider = serviceCollection.BuildServiceProvider();
+            TestClient client = provider.GetService<TestClient>();
+
+            Assert.AreEqual("conn str", client.ConnectionString);
+            Assert.NotNull(client.Options);
+        }
+
+        [Test]
+        public void CanRegisterCustomClientWithOptionsAndCredential()
+        {
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddAzureClients(builder =>
+                builder.AddClient<TestClientWithCredentials, TestClientOptions>((credential, options) => new TestClientWithCredentials(new Uri("http://localhost/"), credential, options))
+            );
+            ServiceProvider provider = serviceCollection.BuildServiceProvider();
+            TestClientWithCredentials client = provider.GetService<TestClientWithCredentials>();
+
+            Assert.AreEqual("http://localhost/", client.Uri.AbsoluteUri);
+            Assert.NotNull(client.Options);
+            Assert.NotNull(client.Credential);
+        }
+
+        [Test]
+        public void CanRegisterCustomClientProvider()
+        {
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddSingleton("conn str");
+            serviceCollection.AddAzureClients(builder =>
+                builder.AddClient<TestClient, TestClientOptions>((p, options) => new TestClient(p.GetService<string>(),  options))
+            );
+            ServiceProvider provider = serviceCollection.BuildServiceProvider();
+            TestClient client = provider.GetService<TestClient>();
+
+            Assert.AreEqual("conn str", client.ConnectionString);
+            Assert.NotNull(client.Options);
+        }
+
+        [Test]
+        public void CanRegisterCustomClientWithOptionsAndCredentialProvider()
+        {
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddSingleton(new Uri("http://localhost/"));
+            serviceCollection.AddAzureClients(builder =>
+                builder.AddClient<TestClientWithCredentials, TestClientOptions>((p, credential, options) => new TestClientWithCredentials(p.GetService<Uri>(), credential, options))
+            );
+            ServiceProvider provider = serviceCollection.BuildServiceProvider();
+            TestClientWithCredentials client = provider.GetService<TestClientWithCredentials>();
+
+            Assert.AreEqual("http://localhost/", client.Uri.AbsoluteUri);
+            Assert.NotNull(client.Options);
+            Assert.NotNull(client.Credential);
         }
 
         private IConfiguration GetConfiguration(params KeyValuePair<string, string>[] items)

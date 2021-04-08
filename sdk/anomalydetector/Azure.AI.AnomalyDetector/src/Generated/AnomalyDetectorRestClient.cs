@@ -18,7 +18,7 @@ namespace Azure.AI.AnomalyDetector
 {
     internal partial class AnomalyDetectorRestClient
     {
-        private string endpoint;
+        private Uri endpoint;
         private ClientDiagnostics _clientDiagnostics;
         private HttpPipeline _pipeline;
 
@@ -27,7 +27,7 @@ namespace Azure.AI.AnomalyDetector
         /// <param name="pipeline"> The HTTP pipeline for sending and receiving REST requests and responses. </param>
         /// <param name="endpoint"> Supported Cognitive Services endpoints (protocol and hostname, for example: https://westus2.api.cognitive.microsoft.com). </param>
         /// <exception cref="ArgumentNullException"> <paramref name="endpoint"/> is null. </exception>
-        public AnomalyDetectorRestClient(ClientDiagnostics clientDiagnostics, HttpPipeline pipeline, string endpoint)
+        public AnomalyDetectorRestClient(ClientDiagnostics clientDiagnostics, HttpPipeline pipeline, Uri endpoint)
         {
             if (endpoint == null)
             {
@@ -45,12 +45,12 @@ namespace Azure.AI.AnomalyDetector
             var request = message.Request;
             request.Method = RequestMethod.Post;
             var uri = new RawRequestUriBuilder();
-            uri.AppendRaw(endpoint, false);
+            uri.Reset(endpoint);
             uri.AppendRaw("/anomalydetector/v1.0", false);
             uri.AppendPath("/timeseries/entire/detect", false);
             request.Uri = uri;
-            request.Headers.Add("Content-Type", "application/json");
             request.Headers.Add("Accept", "application/json");
+            request.Headers.Add("Content-Type", "application/json");
             var content = new Utf8JsonRequestContent();
             content.JsonWriter.WriteObjectValue(body);
             request.Content = content;
@@ -117,12 +117,12 @@ namespace Azure.AI.AnomalyDetector
             var request = message.Request;
             request.Method = RequestMethod.Post;
             var uri = new RawRequestUriBuilder();
-            uri.AppendRaw(endpoint, false);
+            uri.Reset(endpoint);
             uri.AppendRaw("/anomalydetector/v1.0", false);
             uri.AppendPath("/timeseries/last/detect", false);
             request.Uri = uri;
-            request.Headers.Add("Content-Type", "application/json");
             request.Headers.Add("Accept", "application/json");
+            request.Headers.Add("Content-Type", "application/json");
             var content = new Utf8JsonRequestContent();
             content.JsonWriter.WriteObjectValue(body);
             request.Content = content;
@@ -189,12 +189,12 @@ namespace Azure.AI.AnomalyDetector
             var request = message.Request;
             request.Method = RequestMethod.Post;
             var uri = new RawRequestUriBuilder();
-            uri.AppendRaw(endpoint, false);
+            uri.Reset(endpoint);
             uri.AppendRaw("/anomalydetector/v1.0", false);
             uri.AppendPath("/timeseries/changepoint/detect", false);
             request.Uri = uri;
-            request.Headers.Add("Content-Type", "application/json");
             request.Headers.Add("Accept", "application/json");
+            request.Headers.Add("Content-Type", "application/json");
             var content = new Utf8JsonRequestContent();
             content.JsonWriter.WriteObjectValue(body);
             request.Content = content;

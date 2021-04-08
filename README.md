@@ -47,7 +47,7 @@ Documentation and code samples for these libraries can be found [here](https://a
 
 ## Need help?
 
-* For reference documentation visit the [Azure SDK for .NET API Reference](http://aka.ms/net-docs).
+* For reference documentation visit the [Azure SDK for .NET API Reference](https://aka.ms/net-docs).
 * For tutorials, samples, quick starts, and other documentation, go to [Azure for .NET Developers](https://docs.microsoft.com/dotnet/azure/).
 * File an issue via [Github Issues](https://github.com/Azure/azure-sdk-for-net/issues/new/choose).
 * Check [previous questions](https://stackoverflow.com/questions/tagged/azure+.net) or ask new ones on StackOverflow using `azure` and `.net` tags.
@@ -59,6 +59,17 @@ Documentation and code samples for these libraries can be found [here](https://a
 ### Reporting security issues and security bugs
 
 Security issues and bugs should be reported privately, via email, to the Microsoft Security Response Center (MSRC) <secure@microsoft.com>. You should receive a response within 24 hours. If for some reason you do not, please follow up via email to ensure we received your original message. Further information, including the MSRC PGP key, can be found in the [Security TechCenter](https://www.microsoft.com/msrc/faqs-report-an-issue).
+
+## We want your thoughts!
+
+### Feature Requests
+
+What features are important to you?  You can let us know by looking at our open [feature requests](https://github.com/Azure/azure-sdk-for-net/issues?q=is%3Aopen+label%3Afeature-request+sort%3Areactions-%2B1-desc) and sharing your thoughts by giving the issue a thumbs up or thumbs down.  (Note the list is sorted by number of thumbs up in descending order.)
+
+
+### Design Discussions
+
+We would love to incorporate the community's input into our library design process. Here's a list of [design discussions](https://github.com/Azure/azure-sdk-for-net/labels/design-discussion) that we're currently having. Participate in the discussions by leaving your comments in the issue!
 
 ## Contributing
 For details on contributing to this repository, see the [contributing guide](https://github.com/Azure/azure-sdk-for-net/blob/master/CONTRIBUTING.md).

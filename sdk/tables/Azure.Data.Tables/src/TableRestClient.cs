@@ -51,8 +51,8 @@ namespace Azure.Data.Tables
             return new MultipartContent("mixed", $"batch_{guid}");
         }
 
-        /// <summary> Insert entity in a table. </summary>
-        /// <param name="message"></param>
+        /// <summary> Submits a batch operation to a table. </summary>
+        /// <param name="message">The message to send.</param>
         /// <param name="cancellationToken"> The cancellation token to use. </param>
         /// <exception cref="ArgumentNullException"> <paramref name="message"/> is null. </exception>
         public async Task<Response<List<Response>>> SendBatchRequestAsync(HttpMessage message, CancellationToken cancellationToken = default)
@@ -76,7 +76,8 @@ namespace Azure.Data.Tables
 
                         if (responses.Length == 1 && responses.Any(r => r.Status >= 400))
                         {
-                            throw await _clientDiagnostics.CreateRequestFailedExceptionAsync(responses[0]).ConfigureAwait(false);
+                            var ex = await _clientDiagnostics.CreateRequestFailedExceptionAsync(responses[0]).ConfigureAwait(false);
+                            throw ex;
                         }
 
                         return Response.FromValue(responses.ToList(), message.Response);
@@ -86,8 +87,8 @@ namespace Azure.Data.Tables
             }
         }
 
-        /// <summary> Insert entity in a table. </summary>
-        /// <param name="message"></param>
+        /// <summary> Submits a batch operation to a table. </summary>
+        /// <param name="message">The message to send.</param>
         /// <param name="cancellationToken"> The cancellation token to use. </param>
         /// <exception cref="ArgumentNullException"> <paramref name="message"/> is null. </exception>
         public Response<List<Response>> SendBatchRequest(HttpMessage message, CancellationToken cancellationToken = default)
@@ -111,7 +112,8 @@ namespace Azure.Data.Tables
 
                         if (responses.Length == 1 && responses.Any(r => r.Status >= 400))
                         {
-                            throw _clientDiagnostics.CreateRequestFailedException(responses[0]);
+                            var ex = _clientDiagnostics.CreateRequestFailedException(responses[0]);
+                            throw ex;
                         }
 
                         return Response.FromValue(responses.ToList(), message.Response);

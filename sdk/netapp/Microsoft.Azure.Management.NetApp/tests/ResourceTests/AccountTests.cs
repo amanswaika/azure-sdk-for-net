@@ -11,6 +11,7 @@ using Xunit;
 using System;
 using Microsoft.Azure.Management.NetApp.Models;
 using System.Collections.Generic;
+using Microsoft.Rest.Azure;
 
 namespace NetApp.Tests.ResourceTests
 {
@@ -111,9 +112,8 @@ namespace NetApp.Tests.ResourceTests
 
                 // get the account list and check
                 var accounts = netAppMgmtClient.Accounts.List(ResourceUtils.resourceGroup);
-                Assert.Equal(accounts.ElementAt(0).Name, ResourceUtils.accountName1);
-                Assert.Equal(accounts.ElementAt(1).Name, ResourceUtils.accountName2);
-                Assert.Equal(count+2, accounts.Count());
+                Assert.Contains(accounts, item => item.Name == ResourceUtils.accountName1);
+                Assert.Contains(accounts, item => item.Name == ResourceUtils.accountName2);
 
                 // clean up - delete the two accounts
                 ResourceUtils.DeleteAccount(netAppMgmtClient);
@@ -145,6 +145,7 @@ namespace NetApp.Tests.ResourceTests
         public void GetAccountByNameNotFound()
         {
             HttpMockServer.RecordsDirectory = GetSessionsDirectoryPath();
+            string expectedErrorCode = "ResourceNotFound";
             using (MockContext context = MockContext.Start(this.GetType()))
             {
                 var netAppMgmtClient = NetAppTestUtilities.GetNetAppManagementClient(context, new RecordedDelegatingHandler { StatusCodeToReturn = HttpStatusCode.OK });
@@ -156,9 +157,9 @@ namespace NetApp.Tests.ResourceTests
                     Assert.True(false); // expecting exception
                 }
 
-                catch (Exception ex)
+                catch (CloudException cex)
                 {
-                    Assert.StartsWith("The Resource 'Microsoft.NetApp/netAppAccounts/" + ResourceUtils.accountName1 + "' under resource group '" + ResourceUtils.resourceGroup + "' was not found.", ex.Message);
+                    Assert.Equal(cex.Body.Code, expectedErrorCode);
                 }
             }
         }

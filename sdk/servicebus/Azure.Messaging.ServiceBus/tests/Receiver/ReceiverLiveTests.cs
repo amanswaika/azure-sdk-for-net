@@ -100,6 +100,117 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
         }
 
         [Test]
+        public async Task ReceiveMessagesWhenQueueEmpty()
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = new ServiceBusClient(TestEnvironment.ServiceBusConnectionString, new ServiceBusClientOptions
+                {
+                    RetryOptions =
+                    {
+                        // very high TryTimeout
+                        TryTimeout = TimeSpan.FromSeconds(120)
+                    }
+                });
+
+                var messageCount = 2;
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+                IEnumerable<ServiceBusMessage> messages = AddMessages(batch, messageCount).AsEnumerable<ServiceBusMessage>();
+                await sender.SendMessagesAsync(batch);
+
+                var receiver = client.CreateReceiver(scope.QueueName);
+
+                foreach (var message in await receiver.ReceiveMessagesAsync(2))
+                {
+                    await receiver.CompleteMessageAsync(message);
+                }
+
+                using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+                var start = DateTime.UtcNow;
+                Assert.ThrowsAsync<TaskCanceledException>(async () => await receiver.ReceiveMessagesAsync(1, cancellationToken: cancellationTokenSource.Token));
+                var stop = DateTime.UtcNow;
+
+                Assert.That(stop - start, Is.EqualTo(TimeSpan.FromSeconds(3)).Within(TimeSpan.FromSeconds(3)));
+            }
+        }
+
+        [Test]
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task CancellingDoesNotLoseMessages(bool prefetch)
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = CreateClient();
+
+                var messageCount = 10;
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+                IEnumerable<ServiceBusMessage> messages = AddMessages(batch, messageCount).AsEnumerable<ServiceBusMessage>();
+                await sender.SendMessagesAsync(batch);
+                var receiver = client.CreateReceiver(
+                    scope.QueueName,
+                    new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete, PrefetchCount = prefetch ? 10 : 0 });
+
+                using var cancellationTokenSource = new CancellationTokenSource(500);
+                var received = 0;
+
+                try
+                {
+                    for (int i = 0; i < messageCount; i++)
+                    {
+                        await receiver.ReceiveMessageAsync(cancellationToken: cancellationTokenSource.Token);
+                        received++;
+                        await Task.Delay(100);
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                }
+
+                Assert.Less(received, messageCount);
+
+                var remaining = messageCount - received;
+                for (int i = 0; i < remaining; i++)
+                {
+                    await receiver.ReceiveMessageAsync();
+                    received++;
+                }
+                Assert.AreEqual(messageCount, received);
+            }
+        }
+
+        [Test]
+        [TestCase(true)]
+        [TestCase(false)]
+        [Ignore("Not yet implemented")]
+        public async Task CancellingDoesNotBlockSubsequentReceives(bool prefetch)
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = CreateClient();
+
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                var receiver = client.CreateReceiver(scope.QueueName, new ServiceBusReceiverOptions { PrefetchCount = prefetch ? 10 : 0 });
+
+                using var cancellationTokenSource = new CancellationTokenSource(2000);
+                var start = DateTime.UtcNow;
+                Assert.That(
+                    async () => await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(60), cancellationToken: cancellationTokenSource.Token),
+                    Throws.InstanceOf<TaskCanceledException>());
+
+                await sender.SendMessageAsync(GetMessage());
+                var msg = await receiver.ReceiveMessageAsync();
+                Assert.AreEqual(1, msg.DeliveryCount);
+                var end = DateTime.UtcNow;
+                Assert.NotNull(msg);
+                Assert.Less(end - start, TimeSpan.FromSeconds(5));
+            }
+        }
+
+        [Test]
         public async Task ReceiveMessagesInPeekLockMode()
         {
             await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
@@ -270,7 +381,10 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 await sender.SendMessagesAsync(messages);
 
-                var receiver = client.CreateReceiver(scope.QueueName);
+                var receiver = client.CreateReceiver(scope.QueueName, new ServiceBusReceiverOptions
+                {
+                    PrefetchCount = 10
+                });
                 var remainingMessages = messageCount;
                 var messageEnum = messages.GetEnumerator();
 
@@ -281,7 +395,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
                         remainingMessages--;
                         messageEnum.MoveNext();
                         Assert.AreEqual(messageEnum.Current.MessageId, item.MessageId);
-                        Assert.AreEqual(messageEnum.Current.Body.ToBytes().ToArray(), item.Body.ToBytes().ToArray());
+                        Assert.AreEqual(messageEnum.Current.Body.ToArray(), item.Body.ToArray());
                         await receiver.DeadLetterMessageAsync(item.LockToken);
                     }
                 }
@@ -313,7 +427,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
         }
 
         [Test]
-        public async Task DeferMessages()
+        public async Task DeferMessagesList()
         {
             await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
             {
@@ -351,7 +465,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
                 for (int i = 0; i < messageList.Count; i++)
                 {
                     Assert.AreEqual(messageList[i].MessageId, deferredMessages[i].MessageId);
-                    Assert.AreEqual(messageList[i].Body.ToBytes().ToArray(), deferredMessages[i].Body.ToBytes().ToArray());
+                    Assert.AreEqual(messageList[i].Body.ToArray(), deferredMessages[i].Body.ToArray());
                 }
 
                 // verify that looking up a non-existent sequence number will throw
@@ -359,6 +473,114 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
                 Assert.That(
                     async () => await receiver.ReceiveDeferredMessagesAsync(sequenceNumbers),
                     Throws.InstanceOf<ServiceBusException>().And.Property(nameof(ServiceBusException.Reason)).EqualTo(ServiceBusFailureReason.MessageNotFound));
+
+                // verify that an empty list can be passed
+                deferredMessages = await receiver.ReceiveDeferredMessagesAsync(Array.Empty<long>());
+                Assert.IsEmpty(deferredMessages);
+            }
+        }
+
+        [Test]
+        public async Task DeferMessagesArray()
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = new ServiceBusClient(TestEnvironment.ServiceBusConnectionString);
+                var messageCount = 10;
+
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+                IEnumerable<ServiceBusMessage> messages = AddMessages(batch, messageCount).AsEnumerable<ServiceBusMessage>();
+
+                await sender.SendMessagesAsync(batch);
+
+                var receiver = client.CreateReceiver(scope.QueueName);
+                var messageEnum = messages.GetEnumerator();
+                long[] sequenceNumbers = new long[messageCount];
+                var remainingMessages = messageCount;
+                int idx = 0;
+                while (remainingMessages > 0)
+                {
+                    foreach (var item in await receiver.ReceiveMessagesAsync(remainingMessages))
+                    {
+                        remainingMessages--;
+                        messageEnum.MoveNext();
+                        Assert.AreEqual(messageEnum.Current.MessageId, item.MessageId);
+                        sequenceNumbers[idx++] = item.SequenceNumber;
+                        await receiver.DeferMessageAsync(item.LockToken);
+                    }
+                }
+                Assert.AreEqual(0, remainingMessages);
+
+                IReadOnlyList<ServiceBusReceivedMessage> deferredMessages = await receiver.ReceiveDeferredMessagesAsync(sequenceNumbers);
+
+                var messageList = messages.ToList();
+                Assert.AreEqual(messageList.Count, deferredMessages.Count);
+                for (int i = 0; i < messageList.Count; i++)
+                {
+                    Assert.AreEqual(messageList[i].MessageId, deferredMessages[i].MessageId);
+                    Assert.AreEqual(messageList[i].Body.ToArray(), deferredMessages[i].Body.ToArray());
+                }
+
+                // verify that an empty array can be passed
+                deferredMessages = await receiver.ReceiveDeferredMessagesAsync(Array.Empty<long>());
+                Assert.IsEmpty(deferredMessages);
+            }
+        }
+
+        [Test]
+        public async Task DeferMessagesEnumerable()
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = new ServiceBusClient(TestEnvironment.ServiceBusConnectionString);
+                var messageCount = 10;
+
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                using ServiceBusMessageBatch batch = await sender.CreateMessageBatchAsync();
+                IEnumerable<ServiceBusMessage> messages = AddMessages(batch, messageCount).AsEnumerable<ServiceBusMessage>();
+
+                await sender.SendMessagesAsync(batch);
+
+                var receiver = client.CreateReceiver(scope.QueueName);
+                var messageEnum = messages.GetEnumerator();
+                long[] sequenceNumbers = new long[messageCount];
+                var remainingMessages = messageCount;
+                int idx = 0;
+                while (remainingMessages > 0)
+                {
+                    foreach (var item in await receiver.ReceiveMessagesAsync(remainingMessages))
+                    {
+                        remainingMessages--;
+                        messageEnum.MoveNext();
+                        Assert.AreEqual(messageEnum.Current.MessageId, item.MessageId);
+                        sequenceNumbers[idx++] = item.SequenceNumber;
+                        await receiver.DeferMessageAsync(item.LockToken);
+                    }
+                }
+                Assert.AreEqual(0, remainingMessages);
+
+                IReadOnlyList<ServiceBusReceivedMessage> deferredMessages = await receiver.ReceiveDeferredMessagesAsync(GetEnumerable());
+
+                IEnumerable<long> GetEnumerable()
+                {
+                    foreach (long seq in sequenceNumbers)
+                    {
+                        yield return seq;
+                    }
+                }
+
+                var messageList = messages.ToList();
+                Assert.AreEqual(messageList.Count, deferredMessages.Count);
+                for (int i = 0; i < messageList.Count; i++)
+                {
+                    Assert.AreEqual(messageList[i].MessageId, deferredMessages[i].MessageId);
+                    Assert.AreEqual(messageList[i].Body.ToArray(), deferredMessages[i].Body.ToArray());
+                }
+
+                // verify that an empty enumerable can be passed
+                deferredMessages = await receiver.ReceiveDeferredMessagesAsync(Enumerable.Empty<long>());
+                Assert.IsEmpty(deferredMessages);
             }
         }
 
@@ -403,7 +625,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 var clientOptions = new ServiceBusReceiverOptions()
                 {
-                    ReceiveMode = ReceiveMode.ReceiveAndDelete,
+                    ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete,
                 };
                 var receiver = client.CreateReceiver(scope.QueueName, clientOptions);
                 var messageEnum = messages.GetEnumerator();
@@ -436,7 +658,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 var clientOptions = new ServiceBusReceiverOptions()
                 {
-                    ReceiveMode = ReceiveMode.ReceiveAndDelete,
+                    ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete,
                 };
                 var receiver = client.CreateReceiver(scope.QueueName, clientOptions);
                 var receivedMessage = await receiver.ReceiveMessageAsync();
@@ -486,7 +708,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 await receiver.RenewMessageLockAsync(receivedMessage);
 
-                Assert.True(receivedMessage.LockedUntil >= firstLockedUntilUtcTime + TimeSpan.FromSeconds(10));
+                Assert.Greater(receivedMessage.LockedUntil, firstLockedUntilUtcTime);
 
                 // Complete Messages
                 await receiver.CompleteMessageAsync(receivedMessage.LockToken);
@@ -549,7 +771,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 Assert.That(
                     async () => await receiver.CompleteMessageAsync(peekedMessage),
-                    Throws.InstanceOf<InvalidOperationException>());
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("peeked message"));
             }
         }
 
@@ -569,7 +791,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 Assert.That(
                     async () => await receiver.AbandonMessageAsync(peekedMessage),
-                    Throws.InstanceOf<InvalidOperationException>());
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("peeked message"));
             }
         }
 
@@ -589,7 +811,7 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 Assert.That(
                     async () => await receiver.DeferMessageAsync(peekedMessage),
-                    Throws.InstanceOf<InvalidOperationException>());
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("peeked message"));
             }
         }
 
@@ -609,7 +831,75 @@ namespace Azure.Messaging.ServiceBus.Tests.Receiver
 
                 Assert.That(
                     async () => await receiver.DeadLetterMessageAsync(peekedMessage),
-                    Throws.InstanceOf<InvalidOperationException>());
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("peeked message"));
+            }
+        }
+
+        [Test]
+        public async Task ThrowIfSettleInReceiveAndDeleteMode()
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = new ServiceBusClient(TestEnvironment.ServiceBusConnectionString);
+
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+                await sender.SendMessageAsync(GetMessage());
+
+                var receiver = client.CreateReceiver(
+                    scope.QueueName,
+                    new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
+
+                var peekedMessage = await receiver.PeekMessageAsync();
+
+                Assert.That(
+                    async () => await receiver.DeadLetterMessageAsync(peekedMessage),
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("receive mode"));
+
+                Assert.That(
+                    async () => await receiver.DeferMessageAsync(peekedMessage),
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("receive mode"));
+
+                Assert.That(
+                    async () => await receiver.CompleteMessageAsync(peekedMessage),
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("receive mode"));
+
+                Assert.That(
+                    async () => await receiver.AbandonMessageAsync(peekedMessage),
+                    Throws.InstanceOf<InvalidOperationException>().And.Property(nameof(InvalidOperationException.Message)).Contains("receive mode"));
+            }
+        }
+
+        /// <summary>
+        /// This test validates that we are not limited to 5k unsettled messages on the link, as we have updated
+        /// the sessionSettings.IncomingWindow value to Int32.MaxValue in AmqpConnectionScope. Without this change, receivers
+        /// would just stop receiving after 5k unsettled messages and would not throw an exception.
+        /// </summary>
+        [Test]
+        public async Task CanHaveManyUnsettledMessages()
+        {
+            await using (var scope = await ServiceBusScope.CreateWithQueue(enablePartitioning: false, enableSession: false))
+            {
+                await using var client = new ServiceBusClient(TestEnvironment.ServiceBusConnectionString);
+                ServiceBusSender sender = client.CreateSender(scope.QueueName);
+
+                int sentCount = 6000;
+                int messagesPerBatch = 1000;
+
+                await sender.SendMessagesAsync(new List<ServiceBusMessage>());
+
+                for (int i = 0; i < sentCount / messagesPerBatch; i++)
+                {
+                    await sender.SendMessagesAsync(GetMessages(messagesPerBatch));
+                }
+
+                var receiver = client.CreateReceiver(scope.QueueName);
+
+                var receivedCount = 0;
+                while (receivedCount <= sentCount)
+                {
+                    var msgs = await receiver.ReceiveMessagesAsync(sentCount);
+                    receivedCount += msgs.Count;
+                }
             }
         }
 

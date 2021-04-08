@@ -35,6 +35,19 @@ namespace Azure.AI.TextAnalytics.Tests
         };
 
         [Test]
+        public async Task AnalyzeSentimentWithAADTest()
+        {
+            TextAnalyticsClient client = GetClient(useTokenCredential: true);
+            string document = singleEnglish;
+
+            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document);
+
+            CheckAnalyzeSentimentProperties(docSentiment);
+            Assert.AreEqual("Positive", docSentiment.Sentiment.ToString());
+            Assert.AreEqual("Positive", docSentiment.Sentences.FirstOrDefault().Sentiment.ToString());
+        }
+
+        [Test]
         public async Task AnalyzeSentimentTest()
         {
             TextAnalyticsClient client = GetClient();
@@ -65,7 +78,7 @@ namespace Azure.AI.TextAnalytics.Tests
             TextAnalyticsClient client = GetClient();
             string document = "The park was clean and pretty. The bathrooms and restaurant were not clean.";
 
-            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, options: new AnalyzeSentimentOptions() { AdditionalSentimentAnalyses = AdditionalSentimentAnalyses.OpinionMining });
+            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, options: new AnalyzeSentimentOptions() { IncludeOpinionMining = true });
 
             CheckAnalyzeSentimentProperties(docSentiment, opinionMining: true);
             Assert.AreEqual("Mixed", docSentiment.Sentiment.ToString());
@@ -77,7 +90,7 @@ namespace Azure.AI.TextAnalytics.Tests
             TextAnalyticsClient client = GetClient();
             string document = singleEnglish;
 
-            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, "en", new AnalyzeSentimentOptions() { AdditionalSentimentAnalyses = AdditionalSentimentAnalyses.OpinionMining });
+            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, "en", new AnalyzeSentimentOptions() { IncludeOpinionMining = true });
 
             CheckAnalyzeSentimentProperties(docSentiment);
             Assert.AreEqual("Positive", docSentiment.Sentiment.ToString());
@@ -89,15 +102,15 @@ namespace Azure.AI.TextAnalytics.Tests
             TextAnalyticsClient client = GetClient();
             string document = "The bathrooms are not clean.";
 
-            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, options: new AnalyzeSentimentOptions() { AdditionalSentimentAnalyses = AdditionalSentimentAnalyses.OpinionMining });
+            DocumentSentiment docSentiment = await client.AnalyzeSentimentAsync(document, options: new AnalyzeSentimentOptions() { IncludeOpinionMining = true });
 
             CheckAnalyzeSentimentProperties(docSentiment, opinionMining: true);
-            MinedOpinion minedOpinion = docSentiment.Sentences.FirstOrDefault().MinedOpinions.FirstOrDefault();
-            Assert.AreEqual("bathrooms", minedOpinion.Aspect.Text);
-            Assert.AreEqual(TextSentiment.Negative, minedOpinion.Aspect.Sentiment);
-            Assert.AreEqual("clean", minedOpinion.Opinions.FirstOrDefault().Text);
-            Assert.AreEqual(TextSentiment.Negative, minedOpinion.Opinions.FirstOrDefault().Sentiment);
-            Assert.IsTrue(minedOpinion.Opinions.FirstOrDefault().IsNegated);
+            SentenceOpinion opinion = docSentiment.Sentences.FirstOrDefault().Opinions.FirstOrDefault();
+            Assert.AreEqual("bathrooms", opinion.Target.Text);
+            Assert.AreEqual(TextSentiment.Negative, opinion.Target.Sentiment);
+            Assert.AreEqual("clean", opinion.Assessments.FirstOrDefault().Text);
+            Assert.AreEqual(TextSentiment.Negative, opinion.Assessments.FirstOrDefault().Sentiment);
+            Assert.IsTrue(opinion.Assessments.FirstOrDefault().IsNegated);
         }
 
         [Test]
@@ -151,7 +164,7 @@ namespace Azure.AI.TextAnalytics.Tests
                 "The food and service is not good."
             };
 
-            AnalyzeSentimentResultCollection results = await client.AnalyzeSentimentBatchAsync(documents, options: new AnalyzeSentimentOptions() { AdditionalSentimentAnalyses = AdditionalSentimentAnalyses.OpinionMining });
+            AnalyzeSentimentResultCollection results = await client.AnalyzeSentimentBatchAsync(documents, options: new AnalyzeSentimentOptions() { IncludeOpinionMining = true });
 
             foreach (AnalyzeSentimentResult docs in results)
             {
@@ -334,7 +347,7 @@ namespace Azure.AI.TextAnalytics.Tests
                 }
             };
 
-            AnalyzeSentimentResultCollection results = await client.AnalyzeSentimentBatchAsync(documents, options: new AnalyzeSentimentOptions() { AdditionalSentimentAnalyses = AdditionalSentimentAnalyses.OpinionMining });
+            AnalyzeSentimentResultCollection results = await client.AnalyzeSentimentBatchAsync(documents, options: new AnalyzeSentimentOptions() { IncludeOpinionMining = true });
 
             foreach (AnalyzeSentimentResult docs in results)
             {
@@ -426,30 +439,28 @@ namespace Azure.AI.TextAnalytics.Tests
                 Assert.IsNotNull(sentence.ConfidenceScores.Neutral);
                 Assert.IsNotNull(sentence.ConfidenceScores.Negative);
                 Assert.IsTrue(CheckTotalConfidenceScoreValue(sentence.ConfidenceScores));
-                Assert.Greater(sentence.Length, 0);
 
-                Assert.IsNotNull(sentence.MinedOpinions);
+                Assert.IsNotNull(sentence.Opinions);
                 if (opinionMining)
                 {
-                    Assert.Greater(sentence.MinedOpinions.Count(), 0);
-                    foreach (var minedOpinions in sentence.MinedOpinions)
+                    Assert.Greater(sentence.Opinions.Count(), 0);
+                    foreach (var opinions in sentence.Opinions)
                     {
-                        // Aspect
-                        Assert.IsNotNull(minedOpinions.Aspect);
-                        Assert.IsNotNull(minedOpinions.Aspect.Text);
-                        Assert.IsNotNull(minedOpinions.Aspect.ConfidenceScores.Positive);
-                        Assert.IsNotNull(minedOpinions.Aspect.ConfidenceScores.Negative);
+                        // target
+                        Assert.IsNotNull(opinions.Target);
+                        Assert.IsNotNull(opinions.Target.Text);
+                        Assert.IsNotNull(opinions.Target.ConfidenceScores.Positive);
+                        Assert.IsNotNull(opinions.Target.ConfidenceScores.Negative);
                         // Neutral should always be 0
-                        Assert.AreEqual(0, minedOpinions.Aspect.ConfidenceScores.Neutral);
-                        Assert.IsTrue(CheckTotalConfidenceScoreValue(minedOpinions.Aspect.ConfidenceScores));
-                        Assert.IsNotNull(minedOpinions.Aspect.Offset);
-                        Assert.IsNotNull(minedOpinions.Aspect.Length);
-                        Assert.Greater(minedOpinions.Aspect.Length, 0);
+                        Assert.AreEqual(0, opinions.Target.ConfidenceScores.Neutral);
+                        Assert.IsTrue(CheckTotalConfidenceScoreValue(opinions.Target.ConfidenceScores));
+                        Assert.IsNotNull(opinions.Target.Offset);
+                        Assert.IsNotNull(opinions.Target.Length);
 
-                        // Opinions
-                        Assert.IsNotNull(minedOpinions.Opinions);
-                        Assert.Greater(minedOpinions.Opinions.Count(), 0);
-                        foreach (var opinion in minedOpinions.Opinions)
+                        // assessment
+                        Assert.IsNotNull(opinions.Assessments);
+                        Assert.Greater(opinions.Assessments.Count(), 0);
+                        foreach (var opinion in opinions.Assessments)
                         {
                             Assert.IsNotNull(opinion.Text);
                             Assert.IsNotNull(opinion.ConfidenceScores.Positive);
@@ -460,7 +471,6 @@ namespace Azure.AI.TextAnalytics.Tests
                             Assert.IsNotNull(opinion.IsNegated);
                             Assert.IsNotNull(opinion.Offset);
                             Assert.IsNotNull(opinion.Length);
-                            Assert.Greater(opinion.Length, 0);
                         }
                     }
                 }

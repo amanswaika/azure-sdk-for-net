@@ -35,12 +35,12 @@ namespace Azure.AI.TextAnalytics
         public double ConfidenceScore { get; }
 
         /// <summary>
-        /// Gets the starting position (in UTF-16 code units) for the matching text in the document.
+        /// Gets the starting position for the matching text in the document.
         /// </summary>
         public int Offset { get; }
 
         /// <summary>
-        /// Gets the length (in UTF-16 code units) of the matching text in the document.
+        /// Gets the length of the matching text in the sentence.
         /// </summary>
         public int Length { get; }
     }

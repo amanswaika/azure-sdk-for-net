@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -66,7 +65,6 @@ namespace Azure.ResourceManager.Insights.Tests.BasicTests
             var mockTransport = new MockTransport(mockResponse);
             var insightsClient = GetInsightsManagementClient(mockTransport);
             var parameters = CreateDiagnosticSettingsParams();
-
             DiagnosticSettingsResource response = await insightsClient.DiagnosticSettings.CreateOrUpdateAsync(ResourceUri, DiagSetName, parameters);
             AreEqual(expResponse, response);
         }
@@ -115,13 +113,82 @@ namespace Azure.ResourceManager.Insights.Tests.BasicTests
             mockResponse.SetContent(content);
             var mockTransport = new MockTransport(mockResponse);
             var insightsClient = GetInsightsManagementClient(mockTransport);
-            DiagnosticSettingsResource actualResponse = await insightsClient.DiagnosticSettings.GetAsync(ResourceUri,DiagSetName);
+            DiagnosticSettingsResource actualResponse = await insightsClient.DiagnosticSettings.GetAsync(ResourceUri, DiagSetName);
             AreEqual(expResponse, actualResponse);
+        }
+        [Test]
+        public async Task DiagnosticSettingDeleteAsync()
+        {
+            var mockResponse = new MockResponse((int)HttpStatusCode.OK);
+            var mockTransport = new MockTransport(mockResponse);
+            var insightsClient = GetInsightsManagementClient(mockTransport);
+            var result = await insightsClient.DiagnosticSettings.DeleteAsync(ResourceUri, DiagSetName);
+        }
+
+        [Test]
+        public async Task DiagnosticSettingListAsync()
+        {
+            var expResponse = new List<DiagnosticSettingsResource>() { CreateDiagnosticSettings() };
+            var mockResponse = new MockResponse((int)HttpStatusCode.OK);
+            var content = @"
+        { 
+'value':[{
+                'id': null,
+            'name': 'DiagSetName',
+            'type': null,
+            'properties': {
+                    'storageAccountId': '/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.storage/storageaccounts/sa1',
+                'serviceBusRuleId': '/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.servicebus/namespaces/ns1/authorizationRules/authrule',
+                'eventHubAuthorizationRuleId': null,
+                'eventHubName': null,
+                'metrics': [
+                    {
+                        'timeGrain': 'PT1M',
+                        'category': null,
+                        'enabled': true,
+                        'retentionPolicy': {
+                            'enabled': true,
+                            'days': 90
+                        }
+                }
+                ],
+                'logs': [
+                    {
+                        'category': null,
+                        'enabled': true,
+                        'retentionPolicy': {
+                            'enabled': true,
+                            'days': 90
+                        }
+                    }
+                ],
+                'workspaceId': 'wsId',
+                'logAnalyticsDestinationType': null
+            }
+}]
+        }
+".Replace("'", "\"");
+            mockResponse.SetContent(content);
+            var mockTransport = new MockTransport(mockResponse);
+            var insightsClient = GetInsightsManagementClient(mockTransport);
+            var actualResponse = (await insightsClient.DiagnosticSettings.ListAsync(ResourceUri)).Value.Value;
+            AreEqual(expResponse, actualResponse);
+        }
+
+        private void AreEqual(IList<DiagnosticSettingsResource> exp, IReadOnlyList<DiagnosticSettingsResource> act)
+        {
+            if (exp != null)
+            {
+                for (int i = 0; i < exp.Count; i++)
+                {
+                    AreEqual(exp[i], act[i]);
+                }
+            }
         }
 
         private static DiagnosticSettingsResource CreateDiagnosticSettingsParams()
         {
-            return new DiagnosticSettingsResource(null, DiagSetName, null,"/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.storage/storageaccounts/sa1", "/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.servicebus/namespaces/ns1/authorizationRules/authrule",null,null,
+            return new DiagnosticSettingsResource(null, DiagSetName, null, "/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.storage/storageaccounts/sa1", "/subscriptions/4d7e91d4-e930-4bb5-a93d-163aa358e0dc/resourceGroups/Default-Web-westus/providers/microsoft.servicebus/namespaces/ns1/authorizationRules/authrule", null, null,
                     new List<MetricSettings>
                     {
                         new MetricSettings(true)
@@ -136,7 +203,7 @@ namespace Azure.ResourceManager.Insights.Tests.BasicTests
                         {
                             RetentionPolicy = new RetentionPolicy(days:90,enabled:true)
                         }
-                    },"wsId",null
+                    }, "wsId", null
                 );
         }
 
@@ -237,6 +304,5 @@ namespace Azure.ResourceManager.Insights.Tests.BasicTests
 
             Assert.AreEqual(exp.Count, act.Count);
         }
-
     }
 }

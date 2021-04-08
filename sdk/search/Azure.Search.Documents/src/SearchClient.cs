@@ -35,7 +35,7 @@ namespace Azure.Search.Documents
         /// The name of the Search Service, lazily obtained from the
         /// <see cref="Endpoint"/>.
         /// </summary>
-        private string _serviceName = null;
+        private string _serviceName;
 
         /// <summary>
         /// Gets the name of the Search Service.
@@ -52,7 +52,7 @@ namespace Azure.Search.Documents
         /// Gets an <see cref="ObjectSerializer"/> that can be used to
         /// customize the serialization of strongly typed models.
         /// </summary>
-        private ObjectSerializer Serializer { get; }
+        internal ObjectSerializer Serializer { get; }
 
         /// <summary>
         /// Gets the authenticated <see cref="HttpPipeline"/> used for sending
@@ -64,7 +64,7 @@ namespace Azure.Search.Documents
         /// Gets the <see cref="Azure.Core.Pipeline.ClientDiagnostics"/> used
         /// to provide tracing support for the client library.
         /// </summary>
-        private ClientDiagnostics ClientDiagnostics { get; }
+        internal ClientDiagnostics ClientDiagnostics { get; }
 
         /// <summary>
         /// Gets the REST API version of the Search Service to use when making
@@ -175,12 +175,11 @@ namespace Azure.Search.Documents
                 ClientDiagnostics,
                 Pipeline,
                 endpoint.ToString(),
-                IndexName,
+                indexName,
                 null,
                 Version.ToVersionString());
         }
 
-#pragma warning disable CS1573 // Not all parameters will be used depending on feature flags
         /// <summary>
         /// Initializes a new instance of the SearchClient class from a
         /// <see cref="SearchIndexClient"/>.
@@ -192,6 +191,9 @@ namespace Azure.Search.Documents
         /// </param>
         /// <param name="indexName">
         /// Required.  The name of the Search Index.
+        /// </param>
+        /// <param name="serializer">
+        /// An optional customized serializer to use for search documents.
         /// </param>
         /// <param name="pipeline">
         /// The authenticated <see cref="HttpPipeline"/> used for sending
@@ -212,7 +214,6 @@ namespace Azure.Search.Documents
             HttpPipeline pipeline,
             ClientDiagnostics diagnostics,
             SearchClientOptions.ServiceVersion version)
-        #pragma warning restore CS1573
         {
             Debug.Assert(endpoint != null);
             Debug.Assert(string.Equals(endpoint.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
@@ -238,6 +239,18 @@ namespace Azure.Search.Documents
                 null,
                 Version.ToVersionString());
         }
+
+        /// <summary>
+        /// Get a SearchIndexClient with the same pipeline.
+        /// </summary>
+        /// <returns>A SearchIndexClient.</returns>
+        internal SearchIndexClient GetSearchIndexClient() =>
+            new SearchIndexClient(
+                Endpoint,
+                Serializer,
+                Pipeline,
+                ClientDiagnostics,
+                Version);
         #endregion ctors
 
         #region GetDocumentCount
@@ -451,7 +464,7 @@ namespace Azure.Search.Documents
         /// </item>
         /// <item>
         /// <term>Edm.GeographyPoint</term>
-        /// <description> Azure.Core.Spatial.PointGeometry
+        /// <description> Azure.Core.GeoJson.GeoPoint
         /// </description>
         /// </item>
         /// <item>
@@ -500,8 +513,8 @@ namespace Azure.Search.Documents
         /// </item>
         /// <item>
         /// <term>Collection(Edm.GeographyPoint)</term>
-        /// <description>sequence of Azure.Core.Spatial.PointGeometry
-        /// (seq&lt;PointGeometry&gt; in F#)</description>
+        /// <description>sequence of Azure.Core.GeoJson.GeoPoint
+        /// (seq&lt;GeoPoint&gt; in F#)</description>
         /// </item>
         /// <item>
         /// <term>Collection(Edm.ComplexType)</term>
@@ -1425,7 +1438,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to merge.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
@@ -1484,7 +1497,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to merge.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
@@ -1544,7 +1557,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to merge or upload.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
@@ -1603,7 +1616,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to merge or upload.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
@@ -1663,7 +1676,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to delete.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
@@ -1722,7 +1735,7 @@ namespace Azure.Search.Documents
         /// The .NET type that maps to the index schema. Instances of this type
         /// can be retrieved as documents from the index.
         /// </typeparam>
-        /// <param name="documents">The documents to upload.</param>
+        /// <param name="documents">The documents to delete.</param>
         /// <param name="options">
         /// Options that allow specifying document indexing behavior.
         /// </param>
